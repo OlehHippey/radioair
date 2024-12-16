@@ -1,0 +1,163 @@
+C51 COMPILER V9.60.0.0   IF                                                                08/05/2024 16:02:59 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE IF
+OBJECT MODULE PLACED IN .\Output\if.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE ..\rf\if.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR(..\..
+                    -\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_160000) 
+                    -DEBUG OBJECTEXTEND PRINT(.\LST\if.lst) TABS(5) OBJECT(.\Output\if.obj)
+
+line level    source
+
+   1          
+   2          #include "hw_layer.h"
+   3          #include "radio.h"
+   4          #include "if.h"
+   5          
+   6          /*******************************************************
+   7          ; Mode                      = Advanced
+   8          ; Part Number               = CMT2300A
+   9          ; Frequency                 = 433.920 MHz
+  10          ; Xtal Frequency            = 26.0000 MHz
+  11          ; Demodulation              = GFSK
+  12          ; AGC                       = On
+  13          ; Data Rate                 = 9.6 kbps
+  14          ; Deviation                 = 20.0 kHz
+  15          ; Tx Xtal Tol.              = 20 ppm
+  16          ; Rx Xtal Tol.              = 20 ppm
+  17          ; TRx Matching Network Type = 20 dBm
+  18          ; Tx Power                  = +20 dBm
+  19          ; Gaussian BT               = 0.5
+  20          ; Bandwidth                 = Auto-Select kHz
+  21          ; Data Mode                 = Packet
+  22          ; Whitening                 = Disable
+  23          ; Packet Type               = Fixed Length
+  24          ; Payload Length            = 32
+  25          *********************************************************/
+  26          
+  27          unsigned char id=0; //ID of last received packet
+  28          
+  29          
+  30          //Inialize radio on startup
+  31          void Radio_Init(void)
+  32          {
+  33   1           RF_Init();
+  34   1      }
+  35          
+  36          //check receive up to 30 bytes data by Radio to pBuf
+  37          //returns number of bytes in received packet or 0 in waiting
+  38          unsigned char Radio_Recv_VarLen(unsigned char* pBuf)
+  39          {
+  40   1        //if(CMT2300A_MASK_PKT_OK_FLG & CMT2300A_ReadReg(CMT2300A_CUS_INT_FLAG))  // poll PKT_OK flag     
+  41   1        if (cmt_read_p3())  //poll INT3, PKT_DONE 
+  42   1        {   //some data was received
+  43   2          unsigned char len;  //length of packet paylosd
+  44   2          CMT2300A_GoStby(); //switch to standby mode
+  45   2          CMT2300A_ReadFifo(&len,1);     //read first byte is data length
+  46   2          if (len>31) len=31; //restrict to buffer size
+  47   2          if (len>0){
+  48   3            CMT2300A_ReadFifo(&id,1);    //first byte of data is node id
+  49   3            len--; //paylod length is data length - 1
+  50   3            CMT2300A_ReadFifo(pBuf,len); //read payload of receved packet
+  51   3          }
+  52   2          CMT2300A_ClearRxFifo(); //clear rx buffer
+  53   2          CMT2300A_ClearInterruptFlags(); //clear interupt flags
+C51 COMPILER V9.60.0.0   IF                                                                08/05/2024 16:02:59 PAGE 2   
+
+  54   2          CMT2300A_GoRx(); //return back to receiving
+  55   2          return len; //ok
+  56   2        }
+  57   1        return 0; //no data yet
+  58   1      }
+  59          
+  60          //transmit up to 30 bytes payload in pBuf over radio
+  61          //returns 1 if transmitted OK or 0 in fail
+  62          unsigned char Radio_Send_VarLen(unsigned char* pBuf, unsigned char len)
+  63          {
+  64   1           u16 delay; //counter of TX process timeout
+  65   1           
+  66   1           CMT2300A_GoStby(); //switch to standby mode
+  67   1           CMT2300A_ClearInterruptFlags(); //clear interupts flags
+  68   1           CMT2300A_SetPayloadLength(len+1); //set length of data (payload + one byte node id   
+  69   1           CMT2300A_ClearTxFifo(); //clear tx buffer
+  70   1           CMT2300A_EnableWriteFifo(); //enable write new data to buffer    
+  71   1           CMT2300A_WriteFifo(pBuf, len); // write payload to buffer
+  72   1           CMT2300A_GoTx(); //start tx
+  73   1           delay = 1000; //set tx timeout
+  74   1           while(1) //waith for TX compleet or timeout in loop
+  75   1           {
+  76   2          //poll CMT2300A interupt for TX done flag
+  77   2              if (CMT2300A_MASK_TX_DONE_FLG & CMT2300A_ReadReg(CMT2300A_CUS_INT_CLR1))  // Read TX_DONE flag 
+  78   2              { //TX compleet
+  79   3                 CMT2300A_ClearInterruptFlags();   //clear interupt flags
+  80   3                 CMT2300A_EnableReadFifo();   //enable read fifo for next RX
+  81   3                 CMT2300A_GoRx(); //return back to receiving
+  82   3                 return 1; //returns tx ok
+  83   3              }
+  84   2                
+  85   2              delay--; //downcont timer
+  86   2             if (delay==0) //on TX timeout
+  87   2             {
+  88   3                RF_Init(); //reinit Radio: can be some error in setup 
+  89   3                CMT2300A_EnableReadFifo(); //enable read fifo for next RX             
+  90   3                CMT2300A_GoRx(); //return back to receiving
+  91   3                return 0; //returns tx fail
+  92   3             }
+  93   2                
+  94   2           } 
+  95   1           return 0; //returns tx fail as default
+  96   1      }
+  97          
+  98          
+  99          //set node ID of transmitted packet
+ 100          //0 is broadcast packet
+ 101          void Radio_Set_TX_ID(unsigned char d)
+ 102          {
+ 103   1           CMT2300A_SetNodeID(d);
+ 104   1      }
+ 105          
+ 106          //get node ID of last received packet
+ 107          //0 is broadcast packet
+ 108          unsigned char Radio_Get_RX_ID(void)
+ 109          {
+ 110   1           return id;
+ 111   1      }
+ 112          
+ 113          //turn on/off Radio
+ 114          //on=0 for sleep mode of CMT2300, 1 for wake and RX mode
+ 115          //returns 0 on entering sleep or Radio error and 1 if entering receiving is OK
+C51 COMPILER V9.60.0.0   IF                                                                08/05/2024 16:02:59 PAGE 3   
+
+ 116          unsigned char Radio_On(unsigned char on)
+ 117          {
+ 118   1       if(on) //turn on
+ 119   1       {
+ 120   2                   CMT2300A_GoStby(); //goto standby mode first
+ 121   2                   if(0==CMT2300A_IsExist()) return 0; //check CMT2300 is exist - fail
+ 122   2                               CMT2300A_ClearInterruptFlags(); //clear interupts flags
+ 123   2                               CMT2300A_ClearRxFifo(); //clear FIFO
+ 124   2                   CMT2300A_GoRx(); //goto RX mode
+ 125   2                   return 1; //run
+ 126   2       }
+ 127   1       
+ 128   1       CMT2300A_GoSleep(); //goto sleep mode
+ 129   1       return 0; //stop
+ 130   1       
+ 131   1      }
+ 132          
+ 133          
+*** WARNING C294 IN LINE 95 OF ..\rf\if.c: unreachable code
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    287    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =      1      10
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  1 WARNING(S),  0 ERROR(S)

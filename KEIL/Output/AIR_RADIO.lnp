@@ -1,0 +1,14 @@
+".\Output\main.obj",
+".\Output\gpiofunc.obj",
+".\Output\radiodecode.obj",
+".\Output\STARTUP.obj",
+".\Output\cmt_spi3.obj",
+".\Output\cmt2300a.obj",
+".\Output\cmt2300a_hal.obj",
+".\Output\hw_layer.obj",
+".\Output\if.obj",
+".\Output\radio.obj",
+".\Output\Common.obj" 
+TO ".\Output\AIR_RADIO" Rtx51Tiny 
+PRINT(".\LST\AIR_RADIO.m51") RAMSIZE(256) 
+DISABLEWARNING (16) 

@@ -1,0 +1,1 @@
+"..\rf\cmt2300a_hal.c" LARGE OPTIMIZE (8,SPEED) BROWSE INCDIR(..\..\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE (FOSC_160000) DEBUG OBJECTEXTEND PRINT(.\LST\cmt2300a_hal.lst) TABS (5) OBJECT(.\Output\cmt2300a_hal.obj)

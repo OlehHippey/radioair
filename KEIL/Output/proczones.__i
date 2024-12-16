@@ -1,0 +1,1 @@
+"proczones.c" LARGE OPTIMIZE (8,SPEED) BROWSE INCDIR(..\..\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE (FOSC_160000) DEBUG OBJECTEXTEND PRINT(.\LST\proczones.lst) TABS (5) OBJECT(.\Output\proczones.obj)

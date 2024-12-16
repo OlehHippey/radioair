@@ -1,0 +1,124 @@
+C51 COMPILER V9.60.0.0   TIMINGS                                                           12/13/2023 10:32:01 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE TIMINGS
+OBJECT MODULE PLACED IN .\Output\timings.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE timings.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR(..\..\
+                    -..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_160000) D
+                    -EBUG OBJECTEXTEND PRINT(.\LST\timings.lst) TABS(5) OBJECT(.\Output\timings.obj)
+
+line level    source
+
+   1          #include "stdio.h"
+   2          #include "timings.h"
+   3          #include "N76E003.h"
+   4          #include "SFR_Macro.h"
+   5          #include "Function_define.h"
+   6          
+   7          extern unsigned int tamperDirection;  
+   8          
+   9          extern unsigned char secondControl, tamperControl, tamperSender, progMode, checkMode, flag_ups_send, 
+  10                    ups_connected, rsConnect, sound_rst, sound_type; 
+  11          extern unsigned char zonesControll[8];
+  12          extern unsigned char pow_st_now[5];
+  13          
+  14          
+  15          void procCheckMode(void){
+  16   1        if (checkMode){
+  17   2            P12_OpenDrain_Mode;  
+  18   2            if ((checkMode>0 &&  checkMode<3)  || (checkMode>5 && checkMode<8 ) ||
+  19   2                (checkMode>10 && checkMode<13) || (checkMode>15 && checkMode<18)||
+  20   2                (checkMode>20 && checkMode<23) || (checkMode>25 && checkMode<28)||
+  21   2                (checkMode>30 && checkMode<33) || (checkMode>35 && checkMode<38))
+  22   2                 P12=0; else P12=1;
+  23   2            tamperDirection=checkMode+20; 
+  24   2        } else {
+  25   2           P12=1;
+  26   2        } 
+  27   1      }
+  28          
+  29          void procProgMode(void){
+  30   1        if (progMode>5){
+  31   2            P12_OpenDrain_Mode;  
+  32   2            if ((progMode>5 &&  progMode<8)  || (progMode>8 && progMode<11 ) ||
+  33   2                (progMode>11 && progMode<14) || (progMode>14 && progMode<17)||
+  34   2                (progMode>17 && progMode<20) || (progMode>20 && progMode<23)||
+  35   2                (progMode>23 && progMode<26) || (progMode>26 && progMode<29))
+  36   2                 P12=0; else P12=1;
+  37   2        } else {
+  38   2          P12=1;
+  39   2        }
+  40   1      }
+  41          
+  42          void SecondProc(void){
+  43   1        if (secondControl>=4){   
+  44   2           secondControl=0;
+  45   2           if (tamperSender>0){
+  46   3              tamperSender--;
+  47   3           }
+  48   2           if (tamperDirection>0){
+  49   3              tamperDirection--;
+  50   3              P12_OpenDrain_Mode;
+  51   3              if (progMode>0 && progMode<30){
+  52   4                 progMode++;
+  53   4                 if (progMode>5){
+C51 COMPILER V9.60.0.0   TIMINGS                                                           12/13/2023 10:32:01 PAGE 2   
+
+  54   5                    procProgMode();
+  55   5                 } else if (checkMode==0) {
+  56   5                    P12=1;
+  57   5                 }  
+  58   4              } else if (checkMode==0) {
+  59   4                 P12=1;
+  60   4              } 
+  61   3           } else {
+  62   3              progMode=0;  
+  63   3           }
+  64   2          //  if (pow_st_now[0]>1) pow_st_now[0]--;
+  65   2        } 
+  66   1        
+  67   1       if (pow_st_now[0]>1) pow_st_now[0]--;
+  68   1        if (pow_st_now[1]>1) pow_st_now[1]--;
+  69   1        if (pow_st_now[2]>1) pow_st_now[2]--;
+  70   1        if (pow_st_now[3]>1) pow_st_now[3]--;
+  71   1        if (sound_rst>0){
+  72   2           sound_rst--;
+  73   2           if (sound_rst==0) sound_type=0;  
+  74   2        }
+  75   1        
+  76   1      }
+  77          
+  78          void FastControll(void){
+  79   1        unsigned char i;    
+  80   1        for (i=0;i<8;i++){
+  81   2           if (zonesControll[i]>1){
+  82   3              zonesControll[i]--;    
+  83   3           }
+  84   2        }
+  85   1        if (tamperControl>1){   
+  86   2           tamperControl--;
+  87   2        }  
+  88   1        if (checkMode>0){
+  89   2          checkMode--;
+  90   2          procCheckMode();
+  91   2          if (checkMode==0) tamperDirection=0;  
+  92   2        }     
+  93   1            
+  94   1        if (flag_ups_send>0) flag_ups_send--;
+  95   1        if (ups_connected>0 && ups_connected<30) ups_connected++;
+  96   1        if (rsConnect<30) rsConnect++;
+  97   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    792    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

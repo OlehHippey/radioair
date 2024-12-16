@@ -1,0 +1,143 @@
+C51 COMPILER V9.60.0.0   RADIO                                                             08/05/2024 16:02:59 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE RADIO
+OBJECT MODULE PLACED IN .\Output\radio.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE ..\rf\radio.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR(..
+                    -\..\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_16000
+                    -0) DEBUG OBJECTEXTEND PRINT(.\LST\radio.lst) TABS(5) OBJECT(.\Output\radio.obj)
+
+line level    source
+
+   1          /*
+   2           * THE FOLLOWING FIRMWARE IS PROVIDED: (1) "AS IS" WITH NO WARRANTY; AND
+   3           * (2)TO ENABLE ACCESS TO CODING INFORMATION TO GUIDE AND FACILITATE CUSTOMER.
+   4           * CONSEQUENTLY, CMOSTEK SHALL NOT BE HELD LIABLE FOR ANY DIRECT, INDIRECT OR
+   5           * CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING FROM THE CONTENT
+   6           * OF SUCH FIRMWARE AND/OR THE USE MADE BY CUSTOMERS OF THE CODING INFORMATION
+   7           * CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
+   8           *
+   9           * Copyright (C) CMOSTEK SZ.
+  10           */
+  11          
+  12          /*!
+  13           * @file    radio.c
+  14           * @brief   Generic radio handlers
+  15           *
+  16           * @version 1.2
+  17           * @date    Jul 17 2017
+  18           * @author  CMOSTEK R@D
+  19           */
+  20           
+  21          #include "radio.h"
+  22          #include "cmt2300a_params.h"
+  23          
+  24          #include <string.h>
+  25          
+  26          
+  27          void RF_Init(void)
+  28          {
+  29   1          u8 tmp;
+  30   1          
+  31   1                CMT2300A_InitGpio();
+  32   1                CMT2300A_Init();
+  33   1          
+  34   1          /* Config registers */
+  35   1          CMT2300A_ConfigRegBank(CMT2300A_CMT_BANK_ADDR       , g_cmt2300aCmtBank       , CMT2300A_CMT_BANK_SIZE
+             -       );
+  36   1          CMT2300A_ConfigRegBank(CMT2300A_SYSTEM_BANK_ADDR    , g_cmt2300aSystemBank    , CMT2300A_SYSTEM_BANK_S
+             -IZE    );
+  37   1          CMT2300A_ConfigRegBank(CMT2300A_FREQUENCY_BANK_ADDR , g_cmt2300aFrequencyBank , CMT2300A_FREQUENCY_BAN
+             -K_SIZE );
+  38   1          CMT2300A_ConfigRegBank(CMT2300A_DATA_RATE_BANK_ADDR , g_cmt2300aDataRateBank  , CMT2300A_DATA_RATE_BAN
+             -K_SIZE );
+  39   1          CMT2300A_ConfigRegBank(CMT2300A_BASEBAND_BANK_ADDR  , g_cmt2300aBasebandBank  , CMT2300A_BASEBAND_BANK
+             -_SIZE  );
+  40   1          CMT2300A_ConfigRegBank(CMT2300A_TX_BANK_ADDR        , g_cmt2300aTxBank        , CMT2300A_TX_BANK_SIZE 
+             -       );
+  41   1           
+  42   1          // xosc_aac_code[2:0] = 2
+  43   1          tmp = (~0x07) & CMT2300A_ReadReg(CMT2300A_CUS_CMT10);
+  44   1             CMT2300A_WriteReg(CMT2300A_CUS_CMT10, tmp|0x02);
+  45   1      
+  46   1           
+  47   1             RF_Config();
+C51 COMPILER V9.60.0.0   RADIO                                                             08/05/2024 16:02:59 PAGE 2   
+
+  48   1      }
+  49          
+  50          void RF_Config(void)
+  51          {
+  52   1      #ifdef ENABLE_ANTENNA_SWITCH
+                     u8 nInt2Sel;
+                  /* If you enable antenna switch, GPIO1/GPIO2 will output RX_ACTIVE/TX_ACTIVE,
+                     and it can't output INT1/INT2 via GPIO1/GPIO2 */
+                  CMT2300A_EnableAntennaSwitch(0);
+                  
+                  /* Config GPIOs */
+                  CMT2300A_ConfigGpio(CMT2300A_GPIO3_SEL_INT2);   /* INT2 > GPIO3 */    
+                  /* Config interrupt */
+                  nInt2Sel=  CMT2300A_INT_SEL_PKT_DONE; /* Config INT2 */
+                  nInt2Sel &= CMT2300A_MASK_INT2_SEL;
+                  nInt2Sel |= (~CMT2300A_MASK_INT2_SEL) & CMT2300A_ReadReg(CMT2300A_CUS_INT2_CTL);
+                  CMT2300A_WriteReg(CMT2300A_CUS_INT2_CTL, nInt2Sel); 
+              #else
+  66   1             CMT2300A_ConfigGpio( CMT2300A_GPIO1_SEL_INT1 |   /* INT1 > GPIO1 */
+  67   1                                  CMT2300A_GPIO3_SEL_INT2 |   /* INT2 > GPIO3 */
+  68   1                               CMT2300A_GPIO2_SEL_DOUT                        
+  69   1                                 );
+  70   1         
+  71   1             CMT2300A_ConfigInterrupt( CMT2300A_INT_SEL_SYNC_OK,  /* GPIO1 > SYNC_OK */
+  72   1                                       CMT2300A_INT_SEL_PKT_DONE  /* GPIO3 > PKT_DONE*/
+  73   1                                     );
+  74   1            
+  75   1      #endif
+  76   1      
+  77   1          /* Enable interrupt */
+  78   1            CMT2300A_EnableInterrupt(
+  79   1                          CMT2300A_MASK_PKT_DONE_EN | 
+  80   1              CMT2300A_MASK_PREAM_OK_EN |
+  81   1              CMT2300A_MASK_SYNC_OK_EN  |
+  82   1                          CMT2300A_MASK_TX_DONE_EN
+  83   1      //        CMT2300A_MASK_NODE_OK_EN  |
+  84   1      //        CMT2300A_MASK_CRC_OK_EN   |
+  85   1      //         
+  86   1              );
+  87   1      
+  88   1          
+  89   1          /* Disable low frequency OSC calibration */
+  90   1          CMT2300A_EnableLfosc(FALSE);
+  91   1          
+  92   1          /* Use a single 64-byte FIFO for either Tx or Rx */
+  93   1          //CMT2300A_EnableFifoMerge(TRUE);
+  94   1          
+  95   1          //CMT2300A_SetFifoThreshold(16); // FIFO_TH
+  96   1          
+  97   1          /* This is optional, only needed when using Rx fast frequency hopping */
+  98   1          /* See AN142 and AN197 for details */
+  99   1          //CMT2300A_SetAfcOvfTh(0x27);
+ 100   1          
+ 101   1          /* Go to sleep for configuration to take effect */
+ 102   1                
+ 103   1                
+ 104   1                
+ 105   1          CMT2300A_GoSleep();
+ 106   1      }
+ 107          
+ 108          
+
+C51 COMPILER V9.60.0.0   RADIO                                                             08/05/2024 16:02:59 PAGE 3   
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    151    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     96    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

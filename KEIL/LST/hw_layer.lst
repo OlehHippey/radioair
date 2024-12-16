@@ -1,0 +1,189 @@
+C51 COMPILER V9.60.0.0   HW_LAYER                                                          08/05/2024 16:02:59 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE HW_LAYER
+OBJECT MODULE PLACED IN .\Output\hw_layer.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE ..\rf\hw_layer.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR
+                    -(..\..\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_16
+                    -0000) DEBUG OBJECTEXTEND PRINT(.\LST\hw_layer.lst) TABS(5) OBJECT(.\Output\hw_layer.obj)
+
+line level    source
+
+   1          #include "N76E003.h"
+   2          #include "Function_define.h"
+   3          #include "typedefs.h"
+   4          #include "hw_layer.h"
+   5          
+   6          //************************************************************
+   7          //  HW abstraction layer must be impemented depends used CPU
+   8          //************************************************************
+   9          
+  10          
+  11          
+  12          
+  13          //=================Timings============================
+  14          
+  15          //1us delay for software SPI by loop
+  16          void cmt_spi3_delay(void)
+  17          {
+  18   1          volatile u16 n = SPI_DELAY_COUNT_MS; //use predefined itteration value, see .h file
+  19   1          while(n--); //elementary delay in loop
+  20   1      }
+  21          
+  22          //1-32766 us delay by timer
+  23          void system_delay_us(unsigned short us)
+  24          {    //1 tick is 0.5 uS 
+  25   1       us=~(us<<1);                            //period is 65536-us*2  
+  26   1       TL0 = (0x0F&us);  //TL0 = LOBYTE(us);                       //set low byte of period
+  27   1       TH0 = ((0xF0&us)>>4);  //TH0 = HIBYTE(us);                       //set hight byte of period
+  28   1       TR0=1; //set_TCON_TR0;                           //Start Timer0
+  29   1       while (TF0 != 1);                       //Wait Timer0 Time-Out Flag
+  30   1       TR0=0; //clr_TCON_TR0;                           //Stop Timer0
+  31   1       TF0=0; //clr_TCON_TF0;                           //clear flag   
+  32   1      }
+  33          
+  34          
+  35          
+  36          
+  37          
+  38          //=====================GPIO===================================
+  39          
+  40          //initialize GPIO
+  41          void cmt_gpio_init(void)
+  42          {
+  43   1           //empty here: gpio initilazed on main procedure
+  44   1      }
+  45          
+  46          
+  47          //read control data from CMT2300
+  48          unsigned char cmt_read_p1(void)
+  49          {
+  50   1       return !(!CMT2300A_ReadGpio1());       
+  51   1      }
+  52          
+  53          unsigned char cmt_read_p2(void)
+C51 COMPILER V9.60.0.0   HW_LAYER                                                          08/05/2024 16:02:59 PAGE 2   
+
+  54          {
+  55   1       return !(!CMT2300A_ReadGpio2());       
+  56   1      }
+  57          
+  58          //only one line is INT3 will be used in this HW configuration
+  59          unsigned char cmt_read_p3(void)
+  60          {
+  61   1       return !(!CMT2300A_ReadGpio3());       
+  62   1      }
+  63          
+  64          //read RTS line of UART: master can force PowerDown mode by set 0
+  65          unsigned char cmt_read_rts(void)
+  66          {
+  67   1           return !(!CMT2300A_ReadRTS());     
+  68   1      }
+  69          
+  70          //set CTS control for Master: 0 is Master must stop TX data over UART and wait 1
+  71          void cmt_set_cts(unsigned char on)
+  72          {
+  73   1           if(on) CMT2300A_WriteCTS_1();
+  74   1           else CMT2300A_WriteCTS_0();
+  75   1      }
+  76          
+  77          
+  78          
+  79          //void procedure for emty macro (see .h file)
+  80          void cmtvoid(void)
+  81          {
+  82   1           
+  83   1      }
+  84          
+  85          //change input/output mode of bidirectional SPI SDIO line
+  86          void cmt_spi3_sdio_out(void){P01_PushPull_Mode;} //set SDIO as output
+  87          void cmt_spi3_sdio_in(void) //set SDIO as input
+  88          {
+  89   1           
+  90   1       P01_Quasi_Mode; //quasi mode with puu-up
+  91   1       P01 = 1; //for reading output must be set as 1
+  92   1      }
+  93          
+  94          //set on-board LED lights (LED connected to VCC!)
+  95          void als0(void)
+  96          {
+  97   1           CMT2300A_WriteTST_1();
+  98   1      }
+  99          
+ 100          //clear on-board LED no lights
+ 101          void als1(void)
+ 102          {
+ 103   1           CMT2300A_WriteTST_0();
+ 104   1      }
+ 105          
+ 106          
+ 107          /*
+ 108          ////void cmt_spi3_csb_out(void){}//      SET_GPIO_OUT(CMT_CSB_GPIO)
+ 109          void cmt_spi3_fcsb_out(void){}//     SET_GPIO_OUT(CMT_FCSB_GPIO)
+ 110          void cmt_spi3_sclk_out(void){}//     SET_GPIO_OUT(CMT_SCLK_GPIO)
+ 111          void cmt_spi3_sdio_out(void){}//     SET_GPIO_OUT(CMT_SDIO_GPIO)
+ 112          void cmt_spi3_sdio_in(void){}//      SET_GPIO_IN(CMT_SDIO_GPIO)
+ 113          
+ 114          void cmt_spi3_csb_1(void){}//        SET_GPIO_H(CMT_CSB_GPIO)
+ 115          void cmt_spi3_csb_0(void){}//        SET_GPIO_L(CMT_CSB_GPIO)
+C51 COMPILER V9.60.0.0   HW_LAYER                                                          08/05/2024 16:02:59 PAGE 3   
+
+ 116          
+ 117          void cmt_spi3_fcsb_1(void){}//       SET_GPIO_H(CMT_FCSB_GPIO)
+ 118          void cmt_spi3_fcsb_0(void){}//       SET_GPIO_L(CMT_FCSB_GPIO)
+ 119              
+ 120          void cmt_spi3_sclk_1(void){}//       SET_GPIO_H(CMT_SCLK_GPIO)
+ 121          void cmt_spi3_sclk_0(void){}//       SET_GPIO_L(CMT_SCLK_GPIO)
+ 122          
+ 123          void cmt_spi3_sdio_1(void){}//       SET_GPIO_H(CMT_SDIO_GPIO)
+ 124          void cmt_spi3_sdio_0(void){}//       SET_GPIO_L(CMT_SDIO_GPIO)
+ 125          unsigned char cmt_spi3_sdio_read(void){return 0;}//    READ_GPIO_PIN(CMT_SDIO_GPIO)
+ 126          
+ 127          
+ 128          void CMT2300A_SetGpio1In(void) //           SET_GPIO_IN(CMT_GPIO1_GPIO)
+ 129          {
+ 130            //set GPIO to input mode
+ 131          }
+ 132          
+ 133          void CMT2300A_SetGpio2In(void) //           SET_GPIO_IN(CMT_GPIO2_GPIO)
+ 134          {
+ 135          
+ 136           //set GPIO to input mode
+ 137          }
+ 138          
+ 139          
+ 140          void CMT2300A_SetGpio3In(void)//           SET_GPIO_IN(CMT_GPIO3_GPIO)
+ 141          {
+ 142           //set GPIO to input mode
+ 143          }
+ 144          
+ 145          unsigned char CMT2300A_ReadGpio1(void)//            READ_GPIO_PIN(CMT_GPIO1_GPIO)
+ 146          {
+ 147           return 0;
+ 148          }
+ 149          
+ 150          unsigned char CMT2300A_ReadGpio2(void)//            READ_GPIO_PIN(CMT_GPIO2_GPIO)
+ 151          {
+ 152           return 0;
+ 153          }
+ 154          
+ 155          unsigned char CMT2300A_ReadGpio3(void)//            READ_GPIO_PIN(CMT_GPIO3_GPIO)
+ 156          {
+ 157           return 0;
+ 158          }
+ 159          
+ 160          */
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    132    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----       2
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,286 @@
+C51 COMPILER V9.60.0.0   CMT_SPI3                                                          08/05/2024 16:02:59 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE CMT_SPI3
+OBJECT MODULE PLACED IN .\Output\cmt_spi3.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE ..\rf\cmt_spi3.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR
+                    -(..\..\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_16
+                    -0000) DEBUG OBJECTEXTEND PRINT(.\LST\cmt_spi3.lst) TABS(5) OBJECT(.\Output\cmt_spi3.obj)
+
+line level    source
+
+   1          #include "N76E003.h"
+   2          
+   3          #include "cmt_spi3.h"
+   4          #include "hw_layer.h"
+   5          
+   6          void cmt_spi3_init(void)
+   7          {
+   8   1          cmt_spi3_csb_1();
+   9   1          cmt_spi3_csb_out();
+  10   1          cmt_spi3_csb_1();   /* CSB has an internal pull-up resistor */
+  11   1          
+  12   1          cmt_spi3_sclk_0();
+  13   1          cmt_spi3_sclk_out();
+  14   1          cmt_spi3_sclk_0();   /* SCLK has an internal pull-down resistor */
+  15   1          
+  16   1          cmt_spi3_sdio_1();
+  17   1          cmt_spi3_sdio_out();
+  18   1          cmt_spi3_sdio_1();
+  19   1          
+  20   1          cmt_spi3_fcsb_1();
+  21   1          cmt_spi3_fcsb_out();
+  22   1          cmt_spi3_fcsb_1();  /* FCSB has an internal pull-up resistor */
+  23   1      
+  24   1          cmt_spi3_delay();
+  25   1      }
+  26          
+  27          void cmt_spi3_send(u8 data8)
+  28          {
+  29   1          u8 i;
+  30   1      
+  31   1          for(i=0; i<8; i++)
+  32   1          {
+  33   2              cmt_spi3_sclk_0();
+  34   2      
+  35   2              /* Send byte on the rising edge of SCLK */
+  36   2              if(data8 & 0x80)
+  37   2                  cmt_spi3_sdio_1();
+  38   2              else            
+  39   2                  cmt_spi3_sdio_0();
+  40   2      
+  41   2              cmt_spi3_delay();
+  42   2      
+  43   2              data8 <<= 1;
+  44   2              cmt_spi3_sclk_1();
+  45   2              cmt_spi3_delay();
+  46   2          }
+  47   1      }
+  48          
+  49          u8 cmt_spi3_recv(void)
+  50          {
+  51   1          u8 i;
+  52   1          u8 data8 = 0xFF;
+  53   1      
+C51 COMPILER V9.60.0.0   CMT_SPI3                                                          08/05/2024 16:02:59 PAGE 2   
+
+  54   1          for(i=0; i<8; i++)
+  55   1          {
+  56   2              cmt_spi3_sclk_0();
+  57   2              cmt_spi3_delay();
+  58   2              data8 <<= 1;
+  59   2      
+  60   2              cmt_spi3_sclk_1();
+  61   2      
+  62   2              /* Read byte on the rising edge of SCLK */
+  63   2              if(cmt_spi3_sdio_read())
+  64   2                  data8 |= 0x01;
+  65   2              else
+  66   2                  data8 &= ~0x01;
+  67   2      
+  68   2              cmt_spi3_delay();
+  69   2          }
+  70   1      
+  71   1          return data8;
+  72   1      }
+  73          
+  74          void cmt_spi3_write(u8 addr, u8 dat)
+  75          {
+  76   1          cmt_spi3_sdio_1();
+  77   1          cmt_spi3_sdio_out();
+  78   1      
+  79   1          cmt_spi3_sclk_0();
+  80   1          cmt_spi3_sclk_out();
+  81   1          cmt_spi3_sclk_0(); 
+  82   1      
+  83   1          cmt_spi3_fcsb_1();
+  84   1          cmt_spi3_fcsb_out();
+  85   1          cmt_spi3_fcsb_1();
+  86   1      
+  87   1          cmt_spi3_csb_0();
+  88   1      
+  89   1          /* > 0.5 SCLK cycle */
+  90   1          cmt_spi3_delay();
+  91   1          cmt_spi3_delay();
+  92   1      
+  93   1          /* r/w = 0 */
+  94   1          cmt_spi3_send(addr&0x7F);
+  95   1      
+  96   1          cmt_spi3_send(dat);
+  97   1      
+  98   1          cmt_spi3_sclk_0();
+  99   1      
+ 100   1          /* > 0.5 SCLK cycle */
+ 101   1          cmt_spi3_delay();
+ 102   1          cmt_spi3_delay();
+ 103   1      
+ 104   1          cmt_spi3_csb_1();
+ 105   1          
+ 106   1          cmt_spi3_sdio_1();
+ 107   1          cmt_spi3_sdio_in();
+ 108   1          
+ 109   1          cmt_spi3_fcsb_1();    
+ 110   1      }
+ 111          
+ 112          void cmt_spi3_read(u8 addr, u8* p_dat)
+ 113          {
+ 114   1          cmt_spi3_sdio_1();
+ 115   1          cmt_spi3_sdio_out();
+C51 COMPILER V9.60.0.0   CMT_SPI3                                                          08/05/2024 16:02:59 PAGE 3   
+
+ 116   1      
+ 117   1          cmt_spi3_sclk_0();
+ 118   1          cmt_spi3_sclk_out();
+ 119   1          cmt_spi3_sclk_0(); 
+ 120   1      
+ 121   1          cmt_spi3_fcsb_1();
+ 122   1          cmt_spi3_fcsb_out();
+ 123   1          cmt_spi3_fcsb_1();
+ 124   1      
+ 125   1          cmt_spi3_csb_0();
+ 126   1      
+ 127   1          /* > 0.5 SCLK cycle */
+ 128   1          cmt_spi3_delay();
+ 129   1          cmt_spi3_delay();
+ 130   1      
+ 131   1          /* r/w = 1 */
+ 132   1          cmt_spi3_send(addr|0x80);
+ 133   1      
+ 134   1          /* Must set SDIO to input before the falling edge of SCLK */
+ 135   1          cmt_spi3_sdio_in();
+ 136   1          
+ 137   1          *p_dat = cmt_spi3_recv();
+ 138   1      
+ 139   1          cmt_spi3_sclk_0();
+ 140   1      
+ 141   1          /* > 0.5 SCLK cycle */
+ 142   1          cmt_spi3_delay();
+ 143   1          cmt_spi3_delay();
+ 144   1      
+ 145   1          cmt_spi3_csb_1();
+ 146   1          
+ 147   1          cmt_spi3_sdio_1();
+ 148   1          cmt_spi3_sdio_in();
+ 149   1          
+ 150   1          cmt_spi3_fcsb_1();
+ 151   1      }
+ 152          
+ 153          void cmt_spi3_write_fifo(const u8* p_buf, u16 len)
+ 154          {
+ 155   1          u16 i;
+ 156   1      
+ 157   1          cmt_spi3_fcsb_1();
+ 158   1          cmt_spi3_fcsb_out();
+ 159   1          cmt_spi3_fcsb_1();
+ 160   1      
+ 161   1          cmt_spi3_csb_1();
+ 162   1          cmt_spi3_csb_out();
+ 163   1          cmt_spi3_csb_1();
+ 164   1      
+ 165   1          cmt_spi3_sclk_0();
+ 166   1          cmt_spi3_sclk_out();
+ 167   1          cmt_spi3_sclk_0();
+ 168   1      
+ 169   1          cmt_spi3_sdio_out();
+ 170   1      
+ 171   1          for(i=0; i<len; i++)
+ 172   1          {
+ 173   2              cmt_spi3_fcsb_0();
+ 174   2      
+ 175   2              /* > 1 SCLK cycle */
+ 176   2              cmt_spi3_delay();
+ 177   2              cmt_spi3_delay();
+C51 COMPILER V9.60.0.0   CMT_SPI3                                                          08/05/2024 16:02:59 PAGE 4   
+
+ 178   2      
+ 179   2              cmt_spi3_send(p_buf[i]);
+ 180   2      
+ 181   2              cmt_spi3_sclk_0();
+ 182   2      
+ 183   2              /* > 2 us */
+ 184   2              cmt_spi3_delay();
+ 185   2              cmt_spi3_delay();
+ 186   2              cmt_spi3_delay();
+ 187   2      
+ 188   2              cmt_spi3_fcsb_1();
+ 189   2      
+ 190   2              /* > 4 us */
+ 191   2              cmt_spi3_delay();
+ 192   2              cmt_spi3_delay();
+ 193   2              cmt_spi3_delay();
+ 194   2              cmt_spi3_delay();
+ 195   2              cmt_spi3_delay();
+ 196   2              cmt_spi3_delay();
+ 197   2          }
+ 198   1      
+ 199   1          cmt_spi3_sdio_in();
+ 200   1          
+ 201   1          cmt_spi3_fcsb_1();
+ 202   1      }
+ 203          
+ 204          void cmt_spi3_read_fifo(u8* p_buf, u16 len)
+ 205          {
+ 206   1          u16 i;
+ 207   1      
+ 208   1          cmt_spi3_fcsb_1();
+ 209   1          cmt_spi3_fcsb_out();
+ 210   1          cmt_spi3_fcsb_1();
+ 211   1      
+ 212   1          cmt_spi3_csb_1();
+ 213   1          cmt_spi3_csb_out();
+ 214   1          cmt_spi3_csb_1();
+ 215   1      
+ 216   1          cmt_spi3_sclk_0();
+ 217   1          cmt_spi3_sclk_out();
+ 218   1          cmt_spi3_sclk_0();
+ 219   1      
+ 220   1          cmt_spi3_sdio_in();
+ 221   1      
+ 222   1          for(i=0; i<len; i++)
+ 223   1          {
+ 224   2              cmt_spi3_fcsb_0();
+ 225   2      
+ 226   2              /* > 1 SCLK cycle */
+ 227   2              cmt_spi3_delay();
+ 228   2              cmt_spi3_delay();
+ 229   2      
+ 230   2              p_buf[i] = cmt_spi3_recv();
+ 231   2      
+ 232   2              cmt_spi3_sclk_0();
+ 233   2      
+ 234   2              /* > 2 us */
+ 235   2              cmt_spi3_delay();
+ 236   2              cmt_spi3_delay();
+ 237   2              cmt_spi3_delay();
+ 238   2      
+ 239   2              cmt_spi3_fcsb_1();
+C51 COMPILER V9.60.0.0   CMT_SPI3                                                          08/05/2024 16:02:59 PAGE 5   
+
+ 240   2      
+ 241   2              /* > 4 us */
+ 242   2              cmt_spi3_delay();
+ 243   2              cmt_spi3_delay();
+ 244   2              cmt_spi3_delay();
+ 245   2              cmt_spi3_delay();
+ 246   2              cmt_spi3_delay();
+ 247   2              cmt_spi3_delay();
+ 248   2          }
+ 249   1      
+ 250   1          cmt_spi3_sdio_in();
+ 251   1          
+ 252   1          cmt_spi3_fcsb_1();
+ 253   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    643    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----      24
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

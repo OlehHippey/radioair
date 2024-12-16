@@ -1,0 +1,106 @@
+C51 COMPILER V9.60.0.0   CMT2300A_HAL                                                      08/05/2024 16:02:59 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE CMT2300A_HAL
+OBJECT MODULE PLACED IN .\Output\cmt2300a_hal.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE ..\rf\cmt2300a_hal.c LARGE OPTIMIZE(8,SPEED) BROWSE IN
+                    -CDIR(..\..\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOS
+                    -C_160000) DEBUG OBJECTEXTEND PRINT(.\LST\cmt2300a_hal.lst) TABS(5) OBJECT(.\Output\cmt2300a_hal.obj)
+
+line level    source
+
+   1          /*
+   2           * THE FOLLOWING FIRMWARE IS PROVIDED: (1) "AS IS" WITH NO WARRANTY; AND
+   3           * (2)TO ENABLE ACCESS TO CODING INFORMATION TO GUIDE AND FACILITATE CUSTOMER.
+   4           * CONSEQUENTLY, CMOSTEK SHALL NOT BE HELD LIABLE FOR ANY DIRECT, INDIRECT OR
+   5           * CONSEQUENTIAL DAMAGES WITH RESPECT TO ANY CLAIMS ARISING FROM THE CONTENT
+   6           * OF SUCH FIRMWARE AND/OR THE USE MADE BY CUSTOMERS OF THE CODING INFORMATION
+   7           * CONTAINED HEREIN IN CONNECTION WITH THEIR PRODUCTS.
+   8           *
+   9           * Copyright (C) CMOSTEK SZ.
+  10           */
+  11          
+  12          /*!
+  13           * @file    cmt2300a_hal.c
+  14           * @brief   CMT2300A hardware abstraction layer
+  15           *
+  16           * @version 1.2
+  17           * @date    Jul 17 2017
+  18           * @author  CMOSTEK R@D
+  19           */
+  20           
+  21          #include "cmt2300a_hal.h"
+  22          #include "cmt_spi3.h"
+  23          
+  24          /*! ********************************************************
+  25          * @name    CMT2300A_InitGpio
+  26          * @desc    Initializes the CMT2300A interface GPIOs.
+  27          * *********************************************************/
+  28          void CMT2300A_InitGpio(void)
+  29          {
+  30   1          cmt_gpio_init(); //initialize gpio  
+  31   1          cmt_spi3_init(); //initialize SPI
+  32   1      }
+  33          
+  34          /*! ********************************************************
+  35          * @name    CMT2300A_ReadReg
+  36          * @desc    Read the CMT2300A register at the specified address.
+  37          * @param   addr: register address
+  38          * @return  Register value
+  39          * *********************************************************/
+  40          u8 CMT2300A_ReadReg(u8 addr)
+  41          {
+  42   1          u8 dat = 0xFF;
+  43   1          cmt_spi3_read(addr, &dat);
+  44   1           
+  45   1          return dat;
+  46   1      }
+  47          
+  48          /*! ********************************************************
+  49          * @name    CMT2300A_WriteReg
+  50          * @desc    Write the CMT2300A register at the specified address.
+  51          * @param   addr: register address
+  52          *          dat: register value
+  53          * *********************************************************/
+C51 COMPILER V9.60.0.0   CMT2300A_HAL                                                      08/05/2024 16:02:59 PAGE 2   
+
+  54          void CMT2300A_WriteReg(u8 addr, u8 dat)
+  55          {
+  56   1          cmt_spi3_write(addr, dat);
+  57   1      }
+  58          
+  59          /*! ********************************************************
+  60          * @name    CMT2300A_ReadFifo
+  61          * @desc    Reads the contents of the CMT2300A FIFO.
+  62          * @param   buf: buffer where to copy the FIFO read data
+  63          *          len: number of bytes to be read from the FIFO
+  64          * *********************************************************/
+  65          void CMT2300A_ReadFifo(u8 buf[], u16 len)
+  66          {
+  67   1          cmt_spi3_read_fifo(buf, len);
+  68   1      }
+  69          
+  70          /*! ********************************************************
+  71          * @name    CMT2300A_WriteFifo
+  72          * @desc    Writes the buffer contents to the CMT2300A FIFO.
+  73          * @param   buf: buffer containing data to be put on the FIFO
+  74          *          len: number of bytes to be written to the FIFO
+  75          * *********************************************************/
+  76          void CMT2300A_WriteFifo(const u8 buf[], u16 len)
+  77          {
+  78   1          cmt_spi3_write_fifo(buf, len);
+  79   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     36    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----       1
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,384 @@
+C51 COMPILER V9.60.0.0   MAIN                                                              08/05/2024 16:10:42 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Output\main.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE ..\main.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR(..\..\
+                    -..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_160000) D
+                    -EBUG OBJECTEXTEND PRINT(.\LST\main.lst) TABS(5) OBJECT(.\Output\main.obj)
+
+line level    source
+
+   1          /*--------------------------------------------------------------------------------------------------------
+             --*/
+   2          /*                                                                                                        
+             - */
+   3          /* Copyright (c) 2022, OHORONNYI HOLDING. All rights reserved.                                            
+             -      */
+   4          /*                                                                                                        
+             - */
+   5          /*--------------------------------------------------------------------------------------------------------
+             --*/
+   6          //********************************************************************************************************
+             -***
+   7          //  File Function: N76E003 UART RS485 slave demo code
+   8          //********************************************************************************************************
+             -***
+   9          #include "N76E003.h"
+  10          #include "SFR_Macro.h"
+  11          #include "Function_define.h"
+  12          #include "Common.h"
+  13          #include "stdio.h"
+  14          
+  15          #include "rf/if.h"
+  16          #include "rf/hw_layer.h"
+  17          #include "rf/cmt2300a.h"
+  18          
+  19          #include "gpiofunc.h"
+  20          #include "radiodecode.h"
+  21          
+  22          #define BAUDRATE 115200
+  23          #define SYSCLK 25000000  // Assuming a system clock of 16 MHz
+  24          
+  25          #define bitRead(value, bit) (((value) >> (bit)) & 0x01)
+  26          #define bitSet(value, bit) ((value) |= (1UL << (bit)))
+  27          #define bitClear(value, bit) ((value) &= ~(1UL << (bit)))
+  28          #define bitWrite(value, bit, bitvalue) (bitvalue ? bitSet(value, bit) : bitClear(value, bit))
+  29          #define bit(b) (1UL << (b))
+  30          
+  31          
+  32          //project's definitions
+  33          #define RXTOUT 100  //Timeout after RX byte for end of data 10 mS (value in x100uS)
+  34          #define SENDTOUT 1393 //Timeout for sending packets in test mode
+  35          
+  36          
+  37          
+  38          unsigned char tx_buf[MAXDATA+3]; //UART Tx buffer for output Radio received packets
+  39          volatile unsigned char tx_ptr=0; //pointer to byte will be outputted
+  40          
+  41          unsigned char rx_buf[MAXDATA+3]={0}; //UART RX buffer
+  42          volatile unsigned char rx_ptr=0; //pointer to byte will be received over UART
+  43          
+  44          unsigned char tmp[MAXDATA+3]; //temporary buffer
+  45          
+  46          unsigned char ison=0; //flag of Radio CMT2300A is connected
+C51 COMPILER V9.60.0.0   MAIN                                                              08/05/2024 16:10:42 PAGE 2   
+
+  47          unsigned char send_cnt=0; //counter of sended packets in test mode
+  48          unsigned char test=0;
+  49          unsigned char Request=0;
+  50          unsigned char ID_dev=0;
+  51          unsigned char hi_hex=0;
+  52          unsigned char low_hex=0;
+  53          unsigned char num_last_low=0;
+  54          unsigned char num_last_hi=0;
+  55          unsigned int acc_rssi=0;
+  56          
+  57          //------------------------Timer's managment-------------------------
+  58          
+  59          //start unblocked sending timeout interval (value in 1 mS, maximum 1394mS)
+  60          void set_send_tout(unsigned int tout){
+  61   1           clr_TR2;  //clr_T2CON_TR2;              //Stop Timer2
+  62   1           clr_TF2;  //clr_T2CON_TF2;              //clear interupt flag
+  63   1           if(tout){ //set timeout and start timer
+  64   2                tout=tout * 47;           //value for clk=24MHz and div=512
+  65   2                tout = tout - (tout>>10); //fine tune to 1000uS
+  66   2                tout = tout - (tout>>9);  
+  67   2                tout = ~tout;  //convert to counter init value
+  68   2               
+  69   2                TL2 = (0x0F&tout);  //LOBYTE(tout); //set counter's startup value
+  70   2                TH2 = ((0xF0&tout)>>4);  //HIBYTE(tout);
+  71   2                set_TR2; //set_T2CON_TR2;  //start Timer 2
+  72   2           }    
+  73   1      }
+  74          
+  75          void Send_Hex(char dec_symbol){
+  76   1           unsigned char high,low;
+  77   1           high=((dec_symbol>>0x04) & 0x0F) + 0x30;      // + '0'
+  78   1           if (high>0x39) high +=7;                             //>'9'
+  79   1           hi_hex=high;
+  80   1           // low nibble
+  81   1           low=(dec_symbol & 0x0F) + 0x30;               // +'0' low nibble
+  82   1           if (low>0x39) low +=7;
+  83   1           low_hex=low;
+  84   1           return;
+  85   1      }
+  86          //-------------------------Interupts--------------------------------
+  87          void SerialPort0_ISR(void) interrupt 4 
+  88          {
+  89   1        if (RI==1){              //RX data enable
+  90   2           clr_RI;               // Clear RI (Receive Interrupt).
+  91   2           if (rx_ptr<MAXDATA){
+  92   3             rx_buf[rx_ptr] = SBUF;
+  93   3             rx_ptr++;   
+  94   3           } else {
+  95   3             clearRxBuffISR();
+  96   3           }
+  97   2        }
+  98   1      }
+  99          
+ 100          /*
+ 101          //   TIMER 0 interrupt subroutine
+ 102          void Timer0_ISR (void) interrupt 1          //interrupt address is 0x000B
+ 103          {
+ 104              TH0 = 0xFC;
+ 105              TL0 = 0x0F;    
+ 106              P30 = 1;                                                          
+ 107              P17 = 0;                                                                         // GPIO toggle when interrupt
+ 108          }
+C51 COMPILER V9.60.0.0   MAIN                                                              08/05/2024 16:10:42 PAGE 3   
+
+ 109          
+ 110          //    TIMER 1 interrupt subroutine
+ 111          
+ 112          void Timer1_ISR (void) interrupt 3          //interrupt address is 0x001B
+ 113          {
+ 114              TH1 = 0xE0;
+ 115              TL1 = 0x00;   
+ 116              P30 = 1;                                                          
+ 117              P17 = 0;                                                                         // GPIO toggle when interrupt
+ 118          }
+ 119          //Timer2 interrupt subroutine
+ 120          void Timer2_ISR (void) interrupt 5
+ 121          {
+ 122            clr_TF2;                                //Clear Timer2 Interrupt Flag
+ 123            P30 = 1;                                                            
+ 124            P17 = 0;   
+ 125               // GPIO1 toggle
+ 126               //   printf("\n TM2 INT 0x%bX",RCMP2H);
+ 127          }
+ 128          */
+ 129          //-------------------------------------------------------
+ 130          void initGPIO(void){
+ 131   1      //-----------------GPIO Setup--------------------------
+ 132   1           //Outputs
+ 133   1           //OnBoard LED
+ 134   1           P03_PushPull_Mode;
+ 135   1           P03=1;
+ 136   1           //TestOut - JAMPER 2
+ 137   1           P14=0;
+ 138   1           P14_PushPull_Mode;
+ 139   1           //SPI DIO - was P01
+ 140   1           P01=1;
+ 141   1           //P01_PUSHPULL_MODE;
+ 142   1           P01_Quasi_Mode;
+ 143   1           //SPI SCK - was P10
+ 144   1           P10=1;
+ 145   1           P10_PushPull_Mode;
+ 146   1           //SPI CS
+ 147   1           P12=1;
+ 148   1           P12_PushPull_Mode;
+ 149   1           //SPI FB - was P22
+ 150   1           P11=1;
+ 151   1           P11_PushPull_Mode;
+ 152   1           //UART CTS - was P33
+ 153   1           //P33=1;
+ 154   1           //P33_PUSHPULL_MODE;
+ 155   1           //SET 2 color led tx_status - was P24
+ 156   1           P30_PushPull_Mode;
+ 157   1           P17_PushPull_Mode;
+ 158   1           ledRedGreen(LED_RED);
+ 159   1           //Inputs with pull-up
+ 160   1           //IN 3; - was P14
+ 161   1           P05=1;
+ 162   1           P05_Input_Mode;
+ 163   1           P05_PushPull_Mode;
+ 164   1           //UART RTS - was P03
+ 165   1           //P03=1;
+ 166   1           //P03_QUASI_MODE;
+ 167   1           //TestIn (Jumper for activate sending test) - was P17 - BUTTON
+ 168   1           P02=1;
+ 169   1           P02_Input_Mode;
+ 170   1           P02_PushPull_Mode;  
+C51 COMPILER V9.60.0.0   MAIN                                                              08/05/2024 16:10:42 PAGE 4   
+
+ 171   1           // ID dev 2 jumpers for select id device(0..3) - was P21
+ 172   1           P16=1;
+ 173   1           P16_Input_Mode;
+ 174   1           P16_PushPull_Mode;
+ 175   1           
+ 176   1           P14=1;
+ 177   1           P14_Input_Mode;
+ 178   1           P14_PushPull_Mode;
+ 179   1           if (!P14&&!P16) ID_dev=0;     else
+ 180   1           if (!P14&&P16)  ID_dev=1;     else
+ 181   1           if (P14&&!P16)  ID_dev=2;     else
+ 182   1           if (P14&&P16)   ID_dev=3;
+ 183   1      }
+ 184          void initPERIFIRALS(void){
+ 185   1        /*   
+ 186   1        //setup timer0 for blocking delay in Radio driver
+ 187   1        clr_T0M;                                  //T0M=0, Timer0 Clock = Fsys/12
+ 188   1        TMOD |= 0x01;                                   //Timer0 is 16-bit mode
+ 189   1      //setup timer 1 for unblocking UART timeout
+ 190   1        clr_T1M;                                  //T1M=0, Timer1 Clock = Fsys/12
+ 191   1        TMOD |= 0x10;                                   //Timer01 is 16-bit mode 
+ 192   1        // setup timer2 for unblocking sending timeout
+ 193   1        clr_TR2;              //Stop Timer2
+ 194   1        clr_TF2;              //clear interupt flag
+ 195   1        T2MOD&=0x8F;
+ 196   1        TIMER2_DIV_512; //T2MOD|=0x70;  //Timer2 Clock = Fsys/512
+ 197   1        TIMER2_Auto_Reload_Delay_Mode; //clr_CMRL2;        //Timer 2 as auto-reload mode
+ 198   1        set_LDEN;
+ 199   1        set_CMPCR;       //Timer 2 value is auto-cleared as 0000H when a compare match occurs.       
+ 200   1        */   
+ 201   1           
+ 202   1        //setup UART   
+ 203   1        SCON = 0x50;
+ 204   1        set_ES;  //enable UART0 RX and TX interupts
+ 205   1        set_EA; //enable interupts globally   
+ 206   1      }
+ 207          //--------------------------------------------
+ 208          
+ 209          void main(void){
+ 210   1        unsigned char b,TX_status,RX_test; //temporary value
+ 211   1        RX_test=0;
+ 212   1        //start:     
+ 213   1        initGPIO();
+ 214   1        InitialUART0_Timer3(115200);  //UART_Open(24000000,UART0_Timer3,115200);  //run uart with boudrate gener
+             -ator is Timer3 
+ 215   1        initPERIFIRALS();
+ 216   1      //     printf("Start \n");
+ 217   1        //start Radio
+ 218   1        Radio_Init();  //initialize CMT2300A radio
+ 219   1        ison=Radio_On(1); //start receiving with testing device exist  
+ 220   1        if (ison){
+ 221   2          Send_Data_To_UART0('O'); Send_Data_To_UART0('K'); Send_Data_To_UART0(0x13); Send_Data_To_UART0(0x10);
+ 222   2       //  CMT2300A_SetFrequencyChannel(200);
+ 223   2       //  CMT2300A_SetNodeID(0);
+ 224   2          als1();  //indicate Radio started OK   
+ 225   2          ledRedGreen(LED_GREEN); 
+ 226   2        } else {
+ 227   2          Send_Data_To_UART0('F'); Send_Data_To_UART0('a'); Send_Data_To_UART0('i'); Send_Data_To_UART0('l'); Se
+             -nd_Data_To_UART0(0x13); Send_Data_To_UART0(0x10);
+ 228   2          ledRedGreen(LED_RED);
+ 229   2        }
+ 230   1       
+C51 COMPILER V9.60.0.0   MAIN                                                              08/05/2024 16:10:42 PAGE 5   
+
+ 231   1        set_send_tout(SENDTOUT); //run autosend timer
+ 232   1        printf("Ready Radio \n"); /**/
+ 233   1        //main loop
+ 234   1         while(1){
+ 235   2           //---------------------check having packet for transmitt-----------------------           
+ 236   2           //check some data readed and combytetimeout
+ 237   2           if (PIN_TEST==0) {
+ 238   3              test=1;
+ 239   3              Request=0;
+ 240   3              LED_STATUS_OFF;
+ 241   3           } else {
+ 242   3              test=0;
+ 243   3              Request=1;
+ 244   3              LED_STATUS_SET;
+ 245   3           }
+ 246   2           
+ 247   2          // rx_ptr=4;  rx_buf[0]='H'; rx_buf[1]='i'; rx_buf[2]=0x0D; rx_buf[3]=0x0A;
+ 248   2               
+ 249   2           
+ 250   2           if (rx_ptr&&!test){ 
+ 251   3             ledRedGreen(LED_OFF);  
+ 252   3             for (b=0;b<rx_ptr;b++) tmp[b]=rx_buf[b]; //copy readed data to temporary buffer               
+ 253   3            //normally rx_ptr is 1-30: a number of bytes for send
+ 254   3             if (ison) {
+ 255   4               if (Radio_Send_VarLen(tmp, b)){
+ 256   5                  ledRedGreen(LED_GREEN); 
+ 257   5                  clearRxBuff();
+ 258   5                  printf("Send Radio Success \n");  
+ 259   5               } else {
+ 260   5                  ledRedGreen(LED_RED);
+ 261   5                  printf("Send Radio Fail \n");   
+ 262   5               }    
+ 263   4             } //transmitt data (blocked), j is data length
+ 264   3           } //End - rx_ptr&&!test
+ 265   2           //--------------------check receive packet------------------------------        
+ 266   2           //check for receive packet by CMT2300   
+ 267   2           if (!PIN_DATA)  printf("Radio Data detected \n");        
+ 268   2           if (!test||RX_test) b=Radio_Recv_VarLen(tmp);     //b is length of receved packet
+ 269   2           if (b>0){
+ 270   3                printf("Send Radio receive %d \n", b); 
+ 271   3                printf("Data %s \n", tmp);
+ 272   3           } 
+ 273   2           
+ 274   2           
+ 275   2                
+ 276   2             
+ 277   2           if (b && (!tx_ptr)&&(!test||RX_test)){ //check data received and tx buffer is free
+ 278   3             unsigned char i1=0;     
+ 279   3             tx_ptr=b; //set pointer to first byte will be output over UART      
+ 280   3             if (Request&&tmp[8]=='R'&&tmp[9]=='s'&&tmp[10]=='s'){
+ 281   4                Send_Hex((char)CMT2300A_GetRssiDBm());
+ 282   4                tmp[16]=hi_hex;
+ 283   4                tmp[17]=low_hex;
+ 284   4             }
+ 285   3             while(b) {
+ 286   4                 tx_buf[b--]=tmp[i1++];
+ 287   4             }  //P03=1;copy received bytes in reverse order    
+ 288   3             Send_Data_To_UART0(tx_buf[tx_ptr--]); //start TX first byte over UART0   
+ 289   3             if (RX_test&&tmp[0]=='O'&&tmp[1]=='K'&&tmp[3]==num_last_hi&&tmp[4]==num_last_low){
+ 290   4                P17=1;
+ 291   4                if (!P17) set_P30; else clr_P30;
+ 292   4                ledRedGreen(LED_TOGGLE);  
+C51 COMPILER V9.60.0.0   MAIN                                                              08/05/2024 16:10:42 PAGE 6   
+
+ 293   4                RX_test=0;
+ 294   4             }
+ 295   3             if (Request&&tmp[3]=='P'&&tmp[4]=='C'){
+ 296   4                tmp[3]=tmp[0];tmp[4]=tmp[1];
+ 297   4                tmp[0]='O';tmp[1]='K';
+ 298   4                tmp[2]=' ';     
+ 299   4               // LED_STATUS ^= 1;
+ 300   4                if (ison) Radio_Send_VarLen(tmp, 5);
+ 301   4             }
+ 302   3           } 
+ 303   2            //---------------------check for test sendigng mode--------------------
+ 304   2           if (test&&(TF2)){ //check test mode jumper is close and send timeout occured
+ 305   3              unsigned char i2=0;
+ 306   3              if  (RX_test)RX_test=0;
+ 307   3              //acc_rssi+=CMT2300A_GetRssiCode();
+ 308   3               acc_rssi=CMT2300A_GetRssiDBm();
+ 309   3              //acc_rssi/=2;
+ 310   3               Send_Hex(send_cnt);
+ 311   3               tmp[0]=hi_hex;
+ 312   3               tmp[1]=low_hex;
+ 313   3               num_last_hi=tmp[0];
+ 314   3               num_last_low=tmp[1];
+ 315   3               tmp[2]=' ';
+ 316   3               tmp[3]='P';tmp[4]='C';tmp[5]='K';tmp[6]='T';tmp[7]=' ';tmp[8]='R';
+ 317   3               tmp[9]='s';tmp[10]='s';tmp[11]='I';tmp[12]=' ';
+ 318   3               Send_Hex((char)acc_rssi);
+ 319   3               tmp[13]=hi_hex; tmp[14]=low_hex;
+ 320   3               tmp[15]=' ';tmp[16]=' ';tmp[17]=' '; tmp[18]=' ';
+ 321   3               tmp[19]='I';tmp[20]='D';tmp[21]=' '; tmp[22]=0x30+ID_dev;
+ 322   3               tmp[23]=10; tmp[24]=13;
+ 323   3               if (ison) TX_status=Radio_Send_VarLen(tmp, 25);  //check radio avaliable and send 1 byte of count
+             -er
+ 324   3              // LED_STATUS ^= 1; //blink LED on each sended packet in test mode
+ 325   3               if (TX_status) {
+ 326   4                 ledRedGreen(LED_GREEN); 
+ 327   4                // for(i2=0;i2<20;i2++) CMT2300A_DelayUs(1000);
+ 328   4                 RX_test=1;
+ 329   4               } else {
+ 330   4                  ledRedGreen(LED_RED); 
+ 331   4               }
+ 332   3               send_cnt++; //count sended packets             
+ 333   3               set_send_tout(SENDTOUT); //restart autosend timer for next sending
+ 334   3           } 
+ 335   2         } 
+ 336   1      }
+ 337          
+ 338          
+ 339          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1292    ----
+   CONSTANT SIZE    =    109    ----
+   XDATA SIZE       =    112       4
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,179 @@
+C51 COMPILER V9.60.0.0   EXPMEM                                                            09/21/2022 10:44:55 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE EXPMEM
+OBJECT MODULE PLACED IN .\Output\expmem.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE expmem.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR(..\..\.
+                    -.\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_160000) DE
+                    -BUG OBJECTEXTEND PRINT(.\LST\expmem.lst) TABS(5) OBJECT(.\Output\expmem.obj)
+
+line level    source
+
+   1          #include "N76E003.h"
+   2          #include "SFR_Macro.h"
+   3          #include "Function_define.h"
+   4          #include "Common.h"
+   5          #include "Delay.h"
+   6          #include "stdio.h"
+   7          #include "rsobmen.h"
+   8          //----------- Variables -----------------------------
+   9          //Zones
+  10          volatile unsigned char z7out=0;
+  11          volatile unsigned char z8out=0;
+  12          volatile unsigned char zonesClosed=0;
+  13          volatile unsigned char zonesOpened=0;
+  14          volatile unsigned char zonesTypeClosed=0xFF;
+  15          volatile unsigned char zonesTypeOpened=0xFF;
+  16          volatile unsigned char zonesArmed=0;
+  17          volatile unsigned char zonesStatus[8]={0,0,0,0,0,0,0,0};
+  18          volatile unsigned char zonesControll[8]={0,0,0,0,0,0,0,0};
+  19          volatile unsigned char zonesSendTry[8]={0,0,0,0,0,0,0,0};
+  20          volatile unsigned char statusZONES[8]={0,0,0,0,0,0,0,0};
+  21          unsigned char lcd_row[16]={0x0A,0x0A,0x0A,0x0A,0x0A,0x0A,0x0A,0x0A,0,0,0,0,0,0,0,0};
+  22          
+  23          volatile unsigned char z7level=0;
+  24          volatile unsigned char z8level=0;
+  25          //Mode
+  26          volatile unsigned char progMode=0;      //Address programming
+  27          volatile unsigned char checkMode=0;     //Get Address info
+  28          volatile unsigned int tamperDirection=0; 
+  29          volatile unsigned char secondControl=0; //Second calculation
+  30          volatile unsigned char sound_type=0;
+  31          volatile unsigned char sound_prog=0;
+  32          volatile unsigned char sound_rst=0;
+  33          volatile unsigned char sound_ok=0;
+  34          volatile unsigned char passwordMode=0;      //
+  35          volatile unsigned char passwordEntered[8]={0,0,0,0,0,0,0,0};
+  36          
+  37          //Tamper status
+  38          volatile unsigned char tamperStatus=0;
+  39          volatile unsigned char tamperControl=0;
+  40          volatile unsigned char tamperSender=0;
+  41          
+  42          //UPS status
+  43          volatile unsigned char status_battery=0;
+  44          volatile unsigned char voltage_battery=0;
+  45          volatile unsigned char status_power=0;
+  46          volatile unsigned char ups_connected=0;
+  47          volatile unsigned char flag_ups_send=0;
+  48          volatile unsigned char pow_st_now[5]={0,0,0,0,0};
+  49          
+  50          
+  51          //RS-485
+  52          uint8_t rs485Count=0; 
+  53          uint8_t expanderADDR=0;               //Device No
+C51 COMPILER V9.60.0.0   EXPMEM                                                            09/21/2022 10:44:55 PAGE 2   
+
+  54          uint8_t newExpADDR=0;                 //New Device No
+  55          uint8_t rsReceivedBuf[RECFRMMAXLEN]={0};                         // Save received frames
+  56          volatile unsigned char rsConnect=0;
+  57          //MEMORY
+  58          volatile unsigned char xdata page_buffer[128]={0};
+  59          
+  60          /*=========================== Bit functions ===========================*/
+  61          unsigned char set_Bit(char num_val, char num_bit) {return num_val = num_val | (1 << num_bit);}
+  62          //------------------------------------------------------------------------------
+  63          unsigned char clr_Bit(char num_val, char num_bit) {return  num_val = num_val & ~(1 << num_bit);}
+  64          //------------------------------------------------------------------------------
+  65          unsigned char tgl_Bit(char num_val, char num_bit) {return num_val = num_val ^ (1 << num_bit);}
+  66          //------------------------------------------------------------------------------
+  67          unsigned char get_Bit(char num_val, char num_bit) {return num_val = (num_val >> num_bit) & 1; }
+  68          //------------------------------------------------------------------------------
+  69          unsigned char upd_Bit(char num_val, char num_bit, char num_shift) {
+  70   1        if (get_Bit(num_val, num_bit)) return (set_Bit(num_val, num_bit+num_shift));
+  71   1           else return (clr_Bit(num_val, num_bit+num_shift));
+  72   1      }
+  73          //----------------------------------------------------------------------------------------
+  74          unsigned char makeHexToInt(char dec_symbol){
+  75   1           if (dec_symbol>0x2F && dec_symbol<0x3A) return(dec_symbol-0x30); else
+  76   1           if (dec_symbol>0x40 && dec_symbol<0x47) return(10+dec_symbol-0x41); else return(0);
+  77   1      } 
+  78          //------------------------------------------------------------------------------
+  79          unsigned char makeIntToHex(char dec_symbol){
+  80   1           if (dec_symbol<10) return(dec_symbol+0x30); else
+  81   1        if (dec_symbol>9 && dec_symbol<16)return(dec_symbol+0x37); else return(0);         
+  82   1      } 
+  83          //-----------------------------------------------------------------------------------
+  84          unsigned char calcCRC8bit(uint8_t clc_crc, uint8_t inbyte) {
+  85   1      unsigned char i,mix;  
+  86   1        for (i = 8; i; i--) {
+  87   2            mix = (clc_crc ^ inbyte) & 0x01;
+  88   2            clc_crc >>= 1;
+  89   2            if (mix) {
+  90   3              clc_crc ^= 0x8C;
+  91   3            }
+  92   2            inbyte >>= 1;
+  93   2          }
+  94   1        return clc_crc;
+  95   1      }
+  96          /*********************************************************************************************************
+             -********
+  97          read_DATAFLASH_BYTE :
+  98          user can copy all this subroutine into project, then call this function in main.
+  99          **********************************************************************************************************
+             -********/
+ 100          UINT8 Read_APROM_BYTE(UINT16 code *u16_addr){
+ 101   1        UINT8 rdata;
+ 102   1        rdata = *u16_addr>>8;
+ 103   1        return rdata;
+ 104   1      }
+ 105          
+ 106          /*********************************************************************************************************
+             -********
+ 107          write_DATAFLASH_BYTE :
+ 108          user can copy all this subroutine into project, then call this function in main.
+ 109          **********************************************************************************************************
+             -********/    
+ 110          void Write_DATAFLASH_BYTE(unsigned int u16EPAddr,unsigned char u8EPData){
+ 111   1        unsigned char looptmp=0;
+C51 COMPILER V9.60.0.0   EXPMEM                                                            09/21/2022 10:44:55 PAGE 3   
+
+ 112   1        unsigned int u16_addrl_r;
+ 113   1        unsigned int RAMtmp;
+ 114   1        
+ 115   1      //Check page start address
+ 116   1        u16_addrl_r=(u16EPAddr/128)*128;
+ 117   1      //Save APROM data to XRAM0
+ 118   1        for(looptmp=0;looptmp<0x80;looptmp++){
+ 119   2          RAMtmp = Read_APROM_BYTE((unsigned int code *)(u16_addrl_r+looptmp));
+ 120   2          page_buffer[looptmp]=RAMtmp;
+ 121   2        }
+ 122   1      // Modify customer data in XRAM
+ 123   1        page_buffer[u16EPAddr&0x7f] = u8EPData;
+ 124   1        
+ 125   1      //Erase APROM DATAFLASH page
+ 126   1          IAPAL = u16_addrl_r&0xff;
+ 127   1          IAPAH = (u16_addrl_r>>8)&0xff;
+ 128   1          IAPFD = 0xFF;
+ 129   1          set_IAPEN; 
+ 130   1          set_APUEN;
+ 131   1          IAPCN = 0x22;     
+ 132   1           set_IAPGO; 
+ 133   1          
+ 134   1      //Save changed RAM data to APROM DATAFLASH
+ 135   1          set_IAPEN; 
+ 136   1          set_APUEN;
+ 137   1          IAPCN = 0x21;
+ 138   1          for (looptmp=0;looptmp<0x80;looptmp++){
+ 139   2            IAPAL = (u16_addrl_r&0xff)+looptmp;
+ 140   2            IAPAH = (u16_addrl_r>>8)&0xff;
+ 141   2            IAPFD = page_buffer[looptmp];
+ 142   2            set_IAPGO;      
+ 143   2          }
+ 144   1          clr_APUEN;
+ 145   1          clr_IAPEN;
+ 146   1      }  
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    572    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =    284       4
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

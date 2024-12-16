@@ -1,0 +1,248 @@
+C51 COMPILER V9.60.0.0   ONEWIRE_KEY                                                       09/21/2022 11:05:43 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE ONEWIRE_KEY
+OBJECT MODULE PLACED IN .\Output\onewire_key.obj
+COMPILER INVOKED BY: D:\OleksandrVelihorskyi\KEIL\C51\BIN\C51.EXE ..\onewire_key.c LARGE OPTIMIZE(8,SPEED) BROWSE INCDIR
+                    -(..\..\..\..\Library\Device\Include;..\..\..\..\Library\StdDriver\inc;..\Software Delay;..\..\..\Include) DEFINE(FOSC_16
+                    -0000) DEBUG OBJECTEXTEND PRINT(.\LST\onewire_key.lst) TABS(5) OBJECT(.\Output\onewire_key.obj)
+
+line level    source
+
+   1          #include "N76E003.h"
+   2          #include "SFR_Macro.h"
+   3          #include "Function_define.h"
+   4          #include "Common.h"
+   5          #include "Delay.h"
+   6          #include "soft_delay.h"
+   7          #include "onewire_key.h"
+   8          
+   9          unsigned char oneWireBufferRead[8]={0,0,0,0,0,0,0,0};
+  10          unsigned char oneWireBufferSend[8]={0,0,0,0,0,0,0,0};
+  11          unsigned char oneWireBuffer[8]={0,0,0,0,0,0,0,0};
+  12          unsigned int ack_OneWire=1;
+  13          
+  14          unsigned char rw_OneWire=0;
+  15          
+  16          extern unsigned char lcd_row[16];
+  17          const unsigned char snd_Status[8]={
+  18            0x00,  //0 - No sound
+  19            0x1A,  //1 - 0b00011111 - Alarm
+  20            0x23,  //2 - 0b00100011 - Trouble
+  21            0x13,  //3 - 0b00010011 - Armed/Disarmed
+  22            0x21,  //4 - 0b00100001 - OK
+  23            0x33,  //5 - 0b00110011 - ERROR
+  24            0x11,  //6 - 0b00000001 - Programming
+  25            0x21   //7 - 0b00010101 - Clock
+  26          };
+  27          //====================== VARIABLES ========================
+  28          const unsigned char leds_Status[8]={
+  29            0x00,  //00-Off 0b00000000
+  30            0xAA,  //01-0xAA, Always red - 0b10101010
+  31            0x55,  //02-0x55, Always green - 0b01010101
+  32            0x22,  //03-0x22, Fast red - 0b00100010
+  33            0x0A,  //04-0x0A,Slow red - 0b00001010
+  34            0x11,  //05-0x11, Fast green - 0b00010001
+  35            0x05,  //06-0x05,Slow green - 0b00000101
+  36            0x03   //07-Off - 0b00000011
+  37          };
+  38          
+  39          extern unsigned char passwordMode,sound_rst,sound_ok,sound_type,sound_prog,checkMode;
+  40          extern unsigned char passwordEntered[8];
+  41          //------------------------------------------------------------------------
+  42          unsigned char getWireBit(char num_val, char num_bit) {return num_val = (num_val >> num_bit) & 1; }
+  43          unsigned char setWireBit(char num_val, char num_bit) {return num_val = num_val | (1 << num_bit);}
+  44          //------------------------------------------------------------------------
+  45          unsigned char checkAsci(unsigned char num_val){ 
+  46   1        if (num_val>0x2F && num_val<0x3A) return(1); else return(0);
+  47   1      }
+  48          //---------------------------------------------------------------------
+  49          char rstOneWire(void){
+  50   1        set_P13;
+  51   1        delay_us(480);//480
+  52   1        clr_P13;
+  53   1        delay_us(100);//100
+C51 COMPILER V9.60.0.0   ONEWIRE_KEY                                                       09/21/2022 11:05:43 PAGE 2   
+
+  54   1        if (onewire_key_IN()==1) return(1); else return(0);
+  55   1      }
+  56                     
+  57          //---------------------------------------------------------------------
+  58          void sendOneWire(unsigned char owrByte){
+  59   1      char i=0;
+  60   1        for (i=0;i<8;i++){
+  61   2         if (getWireBit(owrByte,i)){
+  62   3            set_P13; 
+  63   3           delay_us(10);   //11
+  64   3           clr_P13;  
+  65   3           delay_us(80);  //90
+  66   3          } else {
+  67   3            set_P13; 
+  68   3           delay_us(80);   //90
+  69   3           clr_P13;  
+  70   3           delay_us(10);   //11
+  71   3          }
+  72   2        }  
+  73   1      }//202
+  74          //---------------------------------------------------------------------
+  75          unsigned char readOneWire(void){ 
+  76   1        unsigned char i,b_wire;
+  77   1        b_wire=0x00;
+  78   1        for (i=8;i>0;i--){
+  79   2          set_P13; 
+  80   2          delay_us(10); //10
+  81   2          clr_P13;  
+  82   2          delay_us(15);//20  //30
+  83   2          b_wire >>= 1; 
+  84   2         if (onewire_key_IN()==0)  b_wire |= 0x80;  
+  85   2          delay_us(60); //80
+  86   2        }  
+  87   1        if (b_wire!=0xFF) ack_OneWire=1;
+  88   1         return b_wire;
+  89   1      }//90
+  90          //====================== BSD Display Function ================================
+  91          unsigned char wire_Sound(void){ //sound_type_wire
+  92   1        //  return(1);
+  93   1          if (sound_ok>0) return(sound_ok);
+  94   1          if (sound_type>0) return(sound_type);
+  95   1          if (sound_prog>0){
+  96   2             sound_prog--;  
+  97   2             return(6); 
+  98   2          } else return(0);
+  99   1      }                           
+ 100          //==================== PROCCESS ONE WIRE FUNCTIONS =======================
+ 101          void prepare_OW_Pack(void){
+ 102   1        unsigned char i;
+ 103   1        unsigned char one_crc=0;
+ 104   1        //unsigned char lcd_row[ZNCNT]={0x55,0x55,0x55,0x55};
+ 105   1      
+ 106   1        for (i=0; i<8;i++) oneWireBufferSend[i]=0; 
+ 107   1        
+ 108   1        //if (ack_OneWire==2 && rw_OneWire==1) oneWireBufferSend[7]=0xA1; else//oneWireBufferSend[7]=0xA1;//0xA1
+             -; 
+ 109   1        if (rw_OneWire==1){
+ 110   2          i= wire_Sound();
+ 111   2          if (i<8) oneWireBufferSend[7]=snd_Status[i];
+ 112   2          if (ack_OneWire==2){
+ 113   3              oneWireBufferSend[7]=setWireBit(oneWireBufferSend[7],7);
+ 114   3              ack_OneWire=0; 
+C51 COMPILER V9.60.0.0   ONEWIRE_KEY                                                       09/21/2022 11:05:43 PAGE 3   
+
+ 115   3          }  
+ 116   2        }  
+ 117   1        if (ack_OneWire!=2) ack_OneWire=0;
+ 118   1        oneWireBufferSend[6]=0x00; 
+ 119   1        if (rw_OneWire>1) oneWireBufferSend[5]=0xAA;//0xAA; //0xAA; 
+ 120   1        for (i=1; i<5; i++){
+ 121   2         //oneWireBufferSend[i]=leds_Status[i];
+ 122   2         oneWireBufferSend[i]=lcd_row[i-1+4*(rw_OneWire-1)];
+ 123   2        }  
+ 124   1      
+ 125   1        for (i=7; i>0; i--)  one_crc=onewire_crc_update(one_crc,oneWireBufferSend[i]); 
+ 126   1        oneWireBufferSend[0]=(unsigned char)one_crc;
+ 127   1        sound_ok=0;
+ 128   1      }
+ 129          //---------------------------------------------------------------------
+ 130          unsigned char onewire_crc_update(uint8_t clc_crc, uint8_t inbyte) {
+ 131   1      unsigned char i,mix;  
+ 132   1        for (i = 8; i; i--) {
+ 133   2            mix = (clc_crc ^ inbyte) & 0x01;
+ 134   2            clc_crc >>= 1;
+ 135   2            if (mix) {
+ 136   3              clc_crc ^= 0x8C;
+ 137   3            }
+ 138   2            inbyte >>= 1;
+ 139   2          }
+ 140   1        return clc_crc;
+ 141   1      }
+ 142          //---------------------------------------------------------------------
+ 143          void decode_OW_Pack(void){
+ 144   1      unsigned char i,pswCategoria; 
+ 145   1      //31_00_00_00_00_00 - one button press
+ 146   1      //80_00_00_00_00_00  - zirka press
+ 147   1        if (oneWireBufferRead[6]==0x80){ 
+ 148   2           passwordMode=0;   
+ 149   2        } else 
+ 150   1        if (oneWireBufferRead[0]==0x01){ 
+ 151   2          if (passwordMode==0){
+ 152   3            for (i=0;i<8;i++){
+ 153   4               passwordEntered[i]=oneWireBufferRead[i];
+ 154   4            }
+ 155   3            passwordMode=3;  
+ 156   3          } //-End Filter
+ 157   2        } else {  //Keyboard password
+ 158   2           pswCategoria=0; //00_00_00_34_33_32_31_CS
+ 159   2           for (i=3;i<7;i++){
+ 160   3               if (checkAsci(oneWireBufferRead[i])==0) break; else pswCategoria++; 
+ 161   3            }
+ 162   2            if (pswCategoria==4){ //Length is 4
+ 163   3               for (i=0;i<8;i++){
+ 164   4                  passwordEntered[i]=oneWireBufferRead[i];
+ 165   4               }
+ 166   3               passwordMode=3;      
+ 167   3            } 
+ 168   2        }  
+ 169   1      }
+ 170          //---------------------------------------------------------------------
+ 171          char check_OW_Pack(void){
+ 172   1      unsigned char i;
+ 173   1      unsigned char one_crc=0;  
+ 174   1         for (i=0; i<7; i++) one_crc=onewire_crc_update(one_crc,oneWireBufferRead[i]);
+ 175   1        if (oneWireBufferRead[7]==one_crc){ 
+ 176   2           return(1); 
+C51 COMPILER V9.60.0.0   ONEWIRE_KEY                                                       09/21/2022 11:05:43 PAGE 4   
+
+ 177   2        } else {
+ 178   2           return(0);
+ 179   2        }
+ 180   1      }
+ 181          //---------------------------------------------------------------------//
+ 182          void processOneWire(void){
+ 183   1        unsigned char i=0;
+ 184   1        if (rstOneWire()==1){ //Device detected
+ 185   2           while (i<14){ //Wait ready to read
+ 186   3              delay_us(10);//(10);  
+ 187   3              if (onewire_key_IN()==0){ 
+ 188   4                 i=16;
+ 189   4              } else i++;
+ 190   3          }  
+ 191   2          delay_us(60); //60 90 Pause before sendingp
+ 192   2         if (onewire_key_IN()==1) return; 
+ 193   2         else { //Device readu to read
+ 194   3            if (rw_OneWire==0){
+ 195   4               sendOneWire(read_ROM);
+ 196   4               delay_us(27);
+ 197   4               for (i=0; i<8; i++){
+ 198   5                  oneWireBufferRead[i]=readOneWire();
+ 199   5               }
+ 200   4               if (check_OW_Pack()==1){
+ 201   5                  ack_OneWire++; 
+ 202   5                  decode_OW_Pack();   
+ 203   5               }  
+ 204   4           } else {
+ 205   4              prepare_OW_Pack();
+ 206   4              sendOneWire(0x7F-rw_OneWire);
+ 207   4              for (i=0; i<8; i++){
+ 208   5                 sendOneWire(oneWireBufferSend[7-i]);
+ 209   5              }  
+ 210   4           }
+ 211   3           if (rw_OneWire++>4) rw_OneWire=0;  
+ 212   3         } //1-7E;2-7-7D;3-7C;4-7B;
+ 213   2        }
+ 214   1        
+ 215   1      }
+ 216          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1064    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =     43       6
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
